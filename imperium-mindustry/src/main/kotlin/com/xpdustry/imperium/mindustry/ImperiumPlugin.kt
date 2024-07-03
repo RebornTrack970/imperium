@@ -56,7 +56,6 @@ import com.xpdustry.imperium.mindustry.game.ImperiumLogicListener
 import com.xpdustry.imperium.mindustry.game.RatingListener
 import com.xpdustry.imperium.mindustry.game.TeamCommand
 import com.xpdustry.imperium.mindustry.game.TipListener
-import com.xpdustry.imperium.mindustry.history.HistoryCommand
 import com.xpdustry.imperium.mindustry.misc.ImperiumMetadataChunkReader
 import com.xpdustry.imperium.mindustry.misc.getMindustryVersion
 import com.xpdustry.imperium.mindustry.permission.ImperiumRankPermissionSource
@@ -141,7 +140,6 @@ class ImperiumPlugin : AbstractMindustryPlugin() {
                 AccountListener::class,
                 AccountCommand::class,
                 ChatMessageListener::class,
-                HistoryCommand::class,
                 BridgeChatMessageListener::class,
                 ReportCommand::class,
                 LogicImageListener::class,

@@ -22,6 +22,7 @@ import com.xpdustry.distributor.api.DistributorProvider
 import com.xpdustry.distributor.api.annotation.EventHandler
 import com.xpdustry.distributor.api.component.ComponentLike
 import com.xpdustry.distributor.api.player.MUUID
+import com.xpdustry.distributor.api.plugin.MindustryPlugin
 import com.xpdustry.distributor.api.util.Priority
 import com.xpdustry.imperium.common.application.ImperiumApplication
 import com.xpdustry.imperium.common.async.ImperiumScope
@@ -53,10 +54,14 @@ import com.xpdustry.imperium.mindustry.translation.announcement_ban
 import com.xpdustry.imperium.mindustry.translation.punishment_message
 import com.xpdustry.imperium.mindustry.translation.punishment_message_simple
 import com.xpdustry.imperium.mindustry.translation.warning
+import com.xpdustry.sentinel.gatekeeper.GatekeeperPipeline
+import com.xpdustry.sentinel.gatekeeper.GatekeeperResult
+import com.xpdustry.sentinel.processing.Processor
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.future.future
 import kotlinx.coroutines.launch
 import mindustry.Vars
 import mindustry.content.Blocks
@@ -78,10 +83,10 @@ class PunishmentListener(instances: InstanceManager) : ImperiumApplication.Liste
     private val cache = PlayerMap<List<Punishment>>(instances.get())
     private val kicking = PlayerMap<Boolean>(instances.get())
     private val chatMessagePipeline = instances.get<ChatMessagePipeline>()
-    private val gatekeeper = instances.get<GatekeeperPipeline>()
     private val badWords = instances.get<BadWordDetector>()
     private val badWordsCounter = SimpleRateLimiter<MUUID>(3, 10.minutes)
     private val config = instances.get<ImperiumConfig>()
+    private val plugin = instances.get<MindustryPlugin>()
 
     override fun onImperiumInit() {
         messenger.consumer<PunishmentMessage> { message ->
@@ -202,20 +207,30 @@ class PunishmentListener(instances: InstanceManager) : ImperiumApplication.Liste
             ctx.message
         }
 
-        gatekeeper.register("punishment", Priority.HIGH) { ctx ->
-            val punishment =
-                punishments
-                    .findAllByIdentity(
-                        Identity.Mindustry("unknown", ctx.uuid, ctx.usid, ctx.address))
-                    .filter { !it.expired && it.type == Punishment.Type.BAN }
-                    .toList()
-                    .maxByOrNull { it.snowflake.timestamp }
-            if (punishment == null) {
-                GatekeeperResult.Success
-            } else {
-                GatekeeperResult.Failure(punishment_message(punishment))
-            }
-        }
+        DistributorProvider.get()
+            .serviceManager
+            .register(
+                plugin,
+                GatekeeperPipeline.PROCESSOR_TYPE,
+                Processor { ctx ->
+                    ImperiumScope.MAIN.future {
+                        val punishment =
+                            punishments
+                                .findAllByIdentity(
+                                    Identity.Mindustry(
+                                        "unknown", ctx.muuid.uuid, ctx.muuid.usid, ctx.address))
+                                .filter { !it.expired && it.type == Punishment.Type.BAN }
+                                .toList()
+                                .maxByOrNull { it.snowflake.timestamp }
+                        if (punishment == null) {
+                            GatekeeperResult.Success
+                        } else {
+                            GatekeeperResult.Failure(
+                                punishment_message(punishment), java.time.Duration.ZERO)
+                        }
+                    }
+                },
+                Priority.HIGH)
     }
 
     @EventHandler

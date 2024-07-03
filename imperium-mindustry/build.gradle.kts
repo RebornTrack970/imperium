@@ -34,6 +34,7 @@ dependencies {
     compileOnly(libs.distributor.common)
     compileOnly(libs.distributor.permission.rank)
     compileOnly(libs.nohorny)
+    compileOnly(libs.sentinel)
     implementation(libs.jsoup)
     implementation(libs.ahocorasick)
 }
@@ -134,6 +135,7 @@ tasks.runMindustryServer {
         downloadSlf4md,
         downloadDistributorCommon,
         downloadDistributorPermissionRank,
+        fileTree("libs") { include("*.jar") },
     )
 }
 
@@ -147,5 +149,6 @@ tasks.register<MindustryExec>("runMindustryServer2") {
         downloadSlf4md,
         downloadDistributorCommon,
         downloadDistributorPermissionRank,
+        fileTree("libs") { include("*.jar") },
     )
 }

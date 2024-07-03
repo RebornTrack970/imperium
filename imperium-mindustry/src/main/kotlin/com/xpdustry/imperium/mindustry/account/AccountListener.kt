@@ -18,8 +18,10 @@
 package com.xpdustry.imperium.mindustry.account
 
 import arc.Core
+import com.xpdustry.distributor.api.DistributorProvider
 import com.xpdustry.distributor.api.annotation.EventHandler
 import com.xpdustry.distributor.api.annotation.TaskHandler
+import com.xpdustry.distributor.api.plugin.MindustryPlugin
 import com.xpdustry.distributor.api.scheduler.MindustryTimeUnit
 import com.xpdustry.distributor.api.util.Priority
 import com.xpdustry.imperium.common.account.Account
@@ -39,14 +41,16 @@ import com.xpdustry.imperium.mindustry.misc.Entities
 import com.xpdustry.imperium.mindustry.misc.identity
 import com.xpdustry.imperium.mindustry.misc.runMindustryThread
 import com.xpdustry.imperium.mindustry.misc.tryGrantAdmin
-import com.xpdustry.imperium.mindustry.security.GatekeeperPipeline
-import com.xpdustry.imperium.mindustry.security.GatekeeperResult
+import com.xpdustry.sentinel.gatekeeper.GatekeeperPipeline
+import com.xpdustry.sentinel.gatekeeper.GatekeeperResult
+import com.xpdustry.sentinel.processing.Processor
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.future.future
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -56,12 +60,12 @@ import mindustry.gen.Iconc
 import mindustry.gen.Player
 
 class AccountListener(instances: InstanceManager) : ImperiumApplication.Listener {
-    private val pipeline = instances.get<GatekeeperPipeline>()
     private val accounts = instances.get<AccountManager>()
     private val users = instances.get<UserManager>()
     private val playtime = ConcurrentHashMap<Player, Long>()
     private val messenger = instances.get<Messenger>()
     private val grantedSessionAchievements = ConcurrentHashMap<Snowflake, Long>()
+    private val plugin = instances.get<MindustryPlugin>()
 
     override fun onImperiumInit() {
         grantedSessionAchievements +=
@@ -70,11 +74,20 @@ class AccountListener(instances: InstanceManager) : ImperiumApplication.Listener
 
         // Small hack to make sure a player session is refreshed when it joins the server,
         // instead of blocking the process in a PlayerConnectionConfirmed event listener
-        pipeline.register("account", Priority.LOWEST) {
-            val identity = Identity.Mindustry(it.name, it.uuid, it.usid, it.address)
-            accounts.refresh(identity)
-            GatekeeperResult.Success
-        }
+        DistributorProvider.get()
+            .serviceManager
+            .register(
+                plugin,
+                GatekeeperPipeline.PROCESSOR_TYPE,
+                Processor {
+                    val identity =
+                        Identity.Mindustry(it.name, it.muuid.uuid, it.muuid.usid, it.address)
+                    ImperiumScope.MAIN.future {
+                        accounts.refresh(identity)
+                        GatekeeperResult.Success
+                    }
+                },
+                Priority.LOWEST)
 
         messenger.consumer<AchievementCompletedMessage> { message ->
             for (player in Entities.getPlayersAsync()) {
